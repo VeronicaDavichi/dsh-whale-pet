@@ -15,9 +15,11 @@
 #
 # 【config 说明】
 #   这里的 config 会传给宿主半侧 apply(ctx, config)，并作为 settings 命名空间
-#   'whale-pet' 的 base 层注册（lib/index.js 的 ctx.settings.register）——因此
-#   size/position 会随 settings.describe 下发到浏览器侧，作为用户设置之下、
-#   代码默认值之上的默认值。优先级：代码默认 < patch(base) < 用户设置。
+#   'whale-pet'（= 本 patch 条目 id）的 base 层。0.1.7-rc.2 起 settings 命名空间
+#   由静态 Config（lib/index.js 的 `Config = buildSettingsSchema().volatile()`）
+#   派生，旧版 ctx.settings.register 已移除。size/position 会随 settings.describe
+#   下发到浏览器侧，作为用户设置之下、代码默认值之上的默认值。
+#   优先级：代码默认 < patch(base) < 用户设置。
 #
 # ============================================================================
 

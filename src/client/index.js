@@ -2513,7 +2513,7 @@ window.__ModuleLoader__.load({
         }
 
         // ============================================================================
-        // 设置卡片—— 注册进官方"设置 → 插件"页（settings.plugin.item）
+        // 设置卡片—— 注册进官方设置页的独立 section（settings.section）
         // ============================================================================
         // 表单内容：意图→动作映射（多选）、动作池启用（多选）、显示与行为设置（开关/预设/下拉）。
         // 保存走 api.settings.update（宿主 schemastery 校验 + 持久化 settings.yaml），
@@ -4078,6 +4078,7 @@ window.__ModuleLoader__.load({
             custom,
             ruleUi,
             t,
+            bare = false,
         }) {
             var behavior = draft.behavior || {};
             var customIds = custom && Array.isArray(custom.ids) ? custom.ids : [];
@@ -4497,7 +4498,50 @@ window.__ModuleLoader__.load({
                 ],
             });
 
-            return h('li', {
+            var bodyContent = [
+                panel(t('secParams'), null, paramsContent),
+                panel(
+                    t('secIntents'),
+                    null,
+                    h('div', { className: 'wp-sf-fieldGrid', children: intentRows })
+                ),
+                panel(
+                    t('secPools'),
+                    null,
+                    h('div', {
+                        className: 'wp-sf-fieldGrid wp-sf-fieldGridPools',
+                        children: poolRows,
+                    })
+                ),
+                panel(t('secCustom'), t('hintCustomCategory'), customContent),
+                panel(
+                    t('secRules'),
+                    t('hintRules'),
+                    h(RulesSection, {
+                        rules: draft.rules || [],
+                        onPatch,
+                        t,
+                        options: ALL_ANIMS.concat(customIds),
+                        ruleUi,
+                    })
+                ),
+                error &&
+                    h('div', {
+                        className: 'wp-sf-footer',
+                        children: [
+                            h('p', { className: 'wp-sf-error', role: 'status' }, error),
+                        ],
+                    }),
+            ];
+            // 插件页（plugins.row.config 的 page 视图）已自带页头与标题，
+            // 因此以 bare 模式渲染：去掉折叠卡片外壳，直接呈现表单各分区。
+            if (bare) {
+                return h('div', {
+                    className: 'wp-sf-card wp-sf-cardBare',
+                    children: [h('div', { className: 'wp-sf-body', children: bodyContent })],
+                });
+            }
+            return h('div', {
                 className: 'wp-sf-card' + (open ? ' wp-sf-cardOpen' : ''),
                 children: [
                     h('button', {
@@ -4524,55 +4568,17 @@ window.__ModuleLoader__.load({
                             }),
                         ],
                     }),
-                    open &&
-                        h('div', {
-                            className: 'wp-sf-body',
-                            children: [
-                                panel(t('secParams'), null, paramsContent),
-                                panel(
-                                    t('secIntents'),
-                                    null,
-                                    h('div', { className: 'wp-sf-fieldGrid', children: intentRows })
-                                ),
-                                panel(
-                                    t('secPools'),
-                                    null,
-                                    h('div', {
-                                        className: 'wp-sf-fieldGrid wp-sf-fieldGridPools',
-                                        children: poolRows,
-                                    })
-                                ),
-                                panel(t('secCustom'), t('hintCustomCategory'), customContent),
-                                panel(
-                                    t('secRules'),
-                                    t('hintRules'),
-                                    h(RulesSection, {
-                                        rules: draft.rules || [],
-                                        onPatch,
-                                        t,
-                                        options: ALL_ANIMS.concat(customIds),
-                                        ruleUi,
-                                    })
-                                ),
-                                error &&
-                                    h('div', {
-                                        className: 'wp-sf-footer',
-                                        children: [
-                                            h('p', { className: 'wp-sf-error', role: 'status' }, error),
-                                        ],
-                                    }),
-                            ],
-                        }),
+                    open && h('div', { className: 'wp-sf-body', children: bodyContent }),
                 ],
             });
         }
 
-        function SettingsCard({ api, store, locale, customStore, ruleRuntime }) {
+        function SettingsCard({ api, store, locale, customStore, ruleRuntime, bare }) {
             var [draft, setDraft] = useState(null); // 编辑中的配置（mergeConfig 合并）
             var [saving, setSaving] = useState(false);
             var [savedAt, setSavedAt] = useState(0);
             var [error, setError] = useState(null);
-            var [open, setOpen] = useState(false); // 卡片折叠（对齐官方 PluginCard）
+            var [open, setOpen] = useState(true); // section 页默认展开（可点击标题收起）
             var toggleOpen = () => {
                 setOpen((current) => !current);
                 if (!open && customStore) customStore.load();
@@ -4712,6 +4718,7 @@ window.__ModuleLoader__.load({
                     onToggle: toggleOpen,
                     ruleUi,
                     t,
+                    bare,
                 });
             }
             if (!draft) {
@@ -4726,6 +4733,7 @@ window.__ModuleLoader__.load({
                     onToggle: toggleOpen,
                     ruleUi,
                     t,
+                    bare,
                 });
             }
             return h(SettingsForm, {
@@ -4759,6 +4767,7 @@ window.__ModuleLoader__.load({
                 onPatch: setDraft,
                 // 展开卡片时顺带刷新自定义动作清单（文件增删后重新打开即同步）
                 onToggle: toggleOpen,
+                bare,
             });
         }
 
@@ -4792,6 +4801,8 @@ window.__ModuleLoader__.load({
             // locale 服务（可选获取）：国际化字典注册（中/英）；缺失时回退中文
             var locale = ctx.get('locale');
             if (locale) locale.register(SETTINGS_NS, LOCALES);
+            // 非组件上下文的静态翻译（section 导航 label 用）；无 locale 服务时回退中文
+            var tStatic = locale ? locale.bind(SETTINGS_NS) : (k) => LOCALES.zh[k] || k;
             // 配置存储：加载设置命名空间 + 订阅热更新（宠物与设置卡片共享）
             var store = api && api.settings ? createConfigStore(api) : null;
             if (store) store.load();
@@ -4814,17 +4825,28 @@ window.__ModuleLoader__.load({
                         h(WhalePet, { config, api, store, locale, customStore, ruleRuntime, ...ownerProps })
                 );
             });
-            // 设置卡片：官方"设置 → 插件"页，键 = 设置命名空间
-            ctx.slots.inject('settings.plugin.item', function* () {
+            // 配置页：注册进官方插件页（侧栏「插件」）的"行配置"槽位 plugins.row.config。
+            // key = <包名>#<行 id>（官方约定）；summary 视图渲染一行简介，page 视图
+            // 渲染完整表单（bare 模式：页面自带标题，无需折叠卡片外壳）。
+            ctx.slots.inject('plugins.row.config', function* () {
                 yield ctx.slots.register(
                     {
-                        name: 'settings.plugin.item',
-                        key: SETTINGS_NS,
-                        // keyed 槽按 priority 排序；order 仅用于 list 槽。
-                        priority: 1000,
+                        name: 'plugins.row.config',
+                        key: '@luweiyabo/dsh-whale-pet#whale-pet',
+                        locale: SETTINGS_NS,
                     },
                     (ownerProps) =>
-                        h(SettingsCard, { api, store, locale, customStore, ruleRuntime, ...ownerProps })
+                        ownerProps && ownerProps.view === 'summary'
+                            ? tStatic('desc')
+                            : h(SettingsCard, {
+                                  ...ownerProps,
+                                  api,
+                                  store,
+                                  locale,
+                                  customStore,
+                                  ruleRuntime,
+                                  bare: true,
+                              })
                 );
             });
         }
