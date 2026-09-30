@@ -57,11 +57,11 @@ See the [complete gallery of all 95 actions](https://github.com/luweiyabo/dsh-wh
 
 | Item | Requirement |
 |---|---|
-| DeepSeek Harness | `^0.1.0-rc.6 \|\| ^0.1.2-rc.1` (developer preview; Web profile) |
+| DeepSeek Harness | `^0.2.0-rc.2` (desktop / Web profile) |
 | Node.js | `^22.19.0 \|\| >=24.0.0` (follows DSH's official `engines.node`) |
 | pnpm | Available on the command line; `dsh plugin` delegates package management to pnpm |
 
-Supports DSH `0.1.2-rc.1` configuration RPC, session events, model selection, and pending approvals/questions while retaining the legacy `connection.api` path. The new adapter reads the current session from the host service and restores state after reconnecting without firing rules for historical messages. Balances still come from official provider endpoints; missing credentials produce a query failure.
+Adapted to DSH `0.2.0-rc.2`: settings read/write via `remote.settings`, session activity via `remote.session` + `sessions` + `uiSession` (the legacy `connection.api` is gone). The current session comes from `uiSession.current`; reconnecting restores state without firing rules for historical messages. Balances still come from official provider endpoints; missing credentials produce a query failure.
 
 ### Install from npm
 

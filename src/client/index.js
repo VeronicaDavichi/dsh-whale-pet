@@ -800,7 +800,7 @@ window.__ModuleLoader__.load({
         // 2. 行为链：待机 →（每次播完按概率）→ 待机/转向/动作/移动；点击/拖拽可打断
         // 3. 朝向（facing）：right 时视频水平镜像
         //
-        // config：来自 patch 配置（兜底）。api：connection 服务的 api 对象（事件感知；
+        // config：来自 patch 配置（兜底）。api：宿主能力适配对象（remote/sessions/uiSession；
         // 缺失时退化为纯自主链桌宠）。store：设置配置存储（null = 走代码默认）。
         // customStore：自定义动作存储（null = 不支持自定义动作）。
         function WhalePet({ config, api, store, locale, customStore, ruleRuntime, useSessions }) {
@@ -1236,7 +1236,7 @@ window.__ModuleLoader__.load({
             }, [cfg && cfg.visible, playing]);
 
             // ---- 事件感知 + 意图仲裁（感知层 → 决策层 → 播放器） ----
-            // 有 api（connection 服务）才接入；缺失时退化为纯自主链桌宠。
+            // 有 api（宿主能力适配层）才接入；缺失时退化为纯自主链桌宠。
             // 仲裁器输出意图时抢占播放对应动作；用户交互/交互动画进行中不抢占。
             // 参数经 arbOptsRef 动态读取（设置自动保存即热生效，不重建事件流）。
             useEffect(() => {
@@ -4775,45 +4775,77 @@ window.__ModuleLoader__.load({
         // 插件主体（Cordis 插件三件套：name / inject / apply）
         // ============================================================================
         var name = 'whale-pet'; // 插件行 id（与 cordis.patch.yml 一致）
-        var inject = ['slots']; // 需要注入的服务：slots（槽位注册表）
+        // 静态注入 slots + remote + remote.settings（0.2.0 官方同款模式，参考
+        // dsh-client-ui-settings 的 inject=["remote","remote.settings"]）。settings
+        // 只注入 slots（必然可用，绝不造成 fiber 等待 / boot failed）。
+        // 设置读写改走软获取 ctx.get('remote.settings')（typert 子服务，
+        // RemoteNamespaceService 以 "remote.settings" 为服务名注册），读写时惰性
+        // 轮询等它就绪。绝不注入 remote/remote.settings/sessions/uiSession——
+        // 子服务就绪晚于 apply，注入会让 fiber 等待，轻则延迟挂载、重则
+        // renderer boot failed 并连累其他窗口浮层布局（之前踩过）。
+        var inject = ['slots'];
 
-        // apply：插件被激活时调用
+        // apply：插件被激活时调用（slots 就绪即挂载）。
+        // 直接 inject + generator（0.1.7 同款），外加 try/catch 兜底，
+        // 任何一步失败都降级、绝不因单个槽位失败连累整机启动。
         function apply(ctx, config) {
-            const connection = ctx.get('connection');
-            if (connection?.rpc && !connection.api) {
-                // 新版服务可能晚于第三方插件挂载；让 Cordis 管理就绪和重载生命周期。
-                return ctx.inject(['sessions', 'remote.session', 'uiSession'], (ready) =>
-                    mount(ready, config)
-                );
+            try {
+                mount(ctx, config);
+            } catch (error) {
+                console.error('[whale-pet] mount failed:', error);
             }
-            return mount(ctx, config);
         }
 
         function mount(ctx, config) {
-            // connection 服务（可选获取）：提供 api.events 事件流用于活动感知、
-            // api.settings 用于设置读写；缺失时宠物退化为纯自主链（仍可正常使用）
-            var connection = ctx.get('connection');
-            var api = resolveHostApi(connection, {
-                sessions: ctx.get('sessions'),
-                remote: ctx.get('remote'),
-                uiSession: ctx.get('uiSession'),
-            });
+            // 设置服务（惰性软获取）：提供设置读写；缺失/未就绪时宠物退化为
+            // 纯自主链（仍可正常使用）。逐步 try/catch：任何一步失败都不中断 mount。
+            var api = null;
+            try {
+                api = resolveHostApi({
+                    // 惰性软获取 remote.settings 命名空间服务；它要等远端连接
+                    // 建立后才就绪，所以只传取值函数，真正读写时再轮询等它。
+                    getSettings: () => ctx.get('remote.settings'),
+                });
+            } catch (e) {
+                console.error('[whale-pet] resolveHostApi failed:', e);
+            }
             // locale 服务（可选获取）：国际化字典注册（中/英）；缺失时回退中文
-            var locale = ctx.get('locale');
-            if (locale) locale.register(SETTINGS_NS, LOCALES);
-            // 非组件上下文的静态翻译（section 导航 label 用）；无 locale 服务时回退中文
+            var locale = null;
+            try {
+                locale = ctx.get('locale');
+            } catch (e) {
+                console.error('[whale-pet] ctx.get(locale) failed:', e);
+            }
+            if (locale) {
+                try {
+                    locale.register(SETTINGS_NS, LOCALES);
+                } catch (e) {
+                    console.error('[whale-pet] locale.register failed:', e);
+                }
+            }
+            // 非组件上下文的静态翻译（summary 一行简介用）；无 locale 服务时回退中文
             var tStatic = locale ? locale.bind(SETTINGS_NS) : (k) => LOCALES.zh[k] || k;
             // 配置存储：加载设置命名空间 + 订阅热更新（宠物与设置卡片共享）
-            var store = api && api.settings ? createConfigStore(api) : null;
-            if (store) store.load();
+            var store = null;
+            try {
+                store = api && api.settings ? createConfigStore(api) : null;
+                if (store) store.load();
+            } catch (e) {
+                console.error('[whale-pet] store init failed:', e);
+                store = null;
+            }
             // 自定义动作存储（资源层）：宠物与设置卡片共享一个实例
             var customStore = createCustomStore();
-            customStore.load();
+            try {
+                customStore.load();
+            } catch (e) {
+                console.error('[whale-pet] customStore.load failed:', e);
+            }
             // 规则共享运行时：传感器命中回调（上次触发时间戳）+ 试触发
             // 实现（宠物注册），设置卡片消费；两者解耦
             var ruleRuntime = createRuleRuntime();
-            // 官方"叠加式"注册模式：slots.inject 等槽位被声明后，再注册我们的条目。
-            // generator + yield 形式不会替换其他条目，而是叠加进列表槽。
+
+            // 槽位 1：桌宠浮层。官方"叠加式"注册：slots.inject 等槽位被声明后注册条目。
             ctx.slots.inject('shell.overlay', function* () {
                 yield ctx.slots.register(
                     {
@@ -4821,22 +4853,32 @@ window.__ModuleLoader__.load({
                         id: 'whale-pet', // 列表槽的条目 id（唯一）
                         order: 1000, // 排序（大 = 靠后渲染）
                     },
-                    (ownerProps) =>
-                        h(WhalePet, { config, api, store, locale, customStore, ruleRuntime, ...ownerProps })
+                    function (ownerProps) {
+                        return h(WhalePet, {
+                            config,
+                            api,
+                            store,
+                            locale,
+                            customStore,
+                            ruleRuntime,
+                            ...ownerProps,
+                        });
+                    }
                 );
             });
-            // 配置页：注册进官方插件页（侧栏「插件」）的"行配置"槽位 plugins.row.config。
-            // key = <包名>#<行 id>（官方约定）；summary 视图渲染一行简介，page 视图
-            // 渲染完整表单（bare 模式：页面自带标题，无需折叠卡片外壳）。
+
+            // 槽位 2：配置页。注册进官方插件页（侧栏「插件」）的"行配置"槽位
+            // plugins.row.config。key = <包名>#<行 id>（官方约定）；summary 视图渲染
+            // 一行简介（用 tStatic，不依赖 entry.locale 的 t seat，避免 locale face
+            // 未安装时的 SlotAssemblyError），page 视图渲染完整表单（bare 模式）。
             ctx.slots.inject('plugins.row.config', function* () {
                 yield ctx.slots.register(
                     {
                         name: 'plugins.row.config',
                         key: '@luweiyabo/dsh-whale-pet#whale-pet',
-                        locale: SETTINGS_NS,
                     },
-                    (ownerProps) =>
-                        ownerProps && ownerProps.view === 'summary'
+                    function (ownerProps) {
+                        return ownerProps && ownerProps.view === 'summary'
                             ? tStatic('desc')
                             : h(SettingsCard, {
                                   ...ownerProps,
@@ -4846,7 +4888,8 @@ window.__ModuleLoader__.load({
                                   customStore,
                                   ruleRuntime,
                                   bare: true,
-                              })
+                              });
+                    }
                 );
             });
         }

@@ -2,6 +2,26 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.2.0] - 2026-09-30
+
+### 重大变更
+
+- 兼容 DSH `0.2.0-rc.2`，**不再支持 0.1.x**（`dsh.compatibility.dsh` 与全部 peer 依赖对齐 `^0.2.0-rc.2`）。
+- 宿主能力改由官方 typert Remote 服务提供：设置读写走 `remote.settings`，会话活动走 `remote.session` + `sessions` + `uiSession`。
+- 移除对旧版 `connection.api` / `connection.rpc.call` 的依赖。
+
+### 修复
+
+- 适配 `remote.settings.describe()` 新返回形状（`namespaces` 直接返回，无 `result.ok` 包装）。
+- 适配活动感知：`uiSession.pendingInteractions` → `uiSession.sessionStatus`。
+- 适配当前会话检测：`sessions.list.getSnapshot().current` 已移除，改由 `uiSession.current` 提供。
+- 修正 `ctx.inject` 服务名：`remote.session` → `remote`（cordis 不支持点号命名空间解析）。
+
+### 依赖
+
+- `@deepseek-ai/cordis` 升至 `^4.0.4`。
+- 新增 peer 依赖 `@deepseek-ai/dsh-api-remotes`、`@deepseek-ai/dsh-api-session-controller`。
+
 ## [0.1.2] - 2026-08-26
 
 ### 新增
