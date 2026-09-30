@@ -62,7 +62,12 @@ export function resolveHostApi(services = {}) {
             update: (args, _signal) =>
                 waitForSettings(getSettings, 15000).then((svc) => {
                     if (!svc) throw new Error('Host settings not ready');
-                    return svc.update(args.ns, args.patch).then((r) => {
+                    // typert direct 是严格元数校验：host 侧签名
+                    // update(ns, patch, expectedRevision) 必须显式给足 3 个实参，
+                    // 少一个就抛 "expected 3 argument(s), got 2"（踩过）。
+                    // expectedRevision = undefined 表示无条件写入（跳过乐观锁），
+                    // 与设置表单「最后一次写入生效」的语义一致。
+                    return svc.update(args.ns, args.patch, args.expectedRevision).then((r) => {
                         if (!r || r.ok !== true) {
                             throw new Error((r && r.error && r.error.message) || 'Host settings update failed');
                         }
